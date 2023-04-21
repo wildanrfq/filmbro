@@ -162,10 +162,42 @@ pub async fn film(
         } else {
             String::new()
         };
+        let rating = if film_info.rating != " 0.0".to_string() {
+            format!("{}\n", film_info.rating)
+        } else {
+            "".to_string()
+        };
+        let plural_check = vec!["", "s"][(film_info.directors.split(", ").count() > 1) as usize];
+        let country_check = if !film_info.countries.is_empty() {
+            "|"
+        } else {
+            ""
+        };
+        let duration = if film_info.duration != "0m".to_string() {
+            format!("{}\n", film_info.duration)
+        } else {
+            "".to_string()
+        };
         ctx.send(|m| {
-            m.embed(|e| {
-                e.title(film_info.title)
-                    .description(format!("{}{}\n\n{}\nDirector{}: {}\n{} | {}\n{}\n\u{1f440} {} | \u{02764} {} | \u{1f4ac} {}", tagline, film_info.synopsis, film_info.rating, vec!["", "s"][(film_info.directors.split(", ").count() > 1) as usize], film_info.directors, film_info.countries, film_info.genre, film_info.duration, film_info.info["people"], film_info.info["likes"], film_info.info["reviews"]))
+                m.embed(|e| {
+                    e.title(film_info.title)
+                    .description(
+                        format!(
+                            "{}{}\n\n{}Director{}: {}\n{} {} {}\n{}\u{1f440} {} | ❤️ {} | \u{1f4ac} {}",
+                            tagline,
+                            film_info.synopsis,
+                            rating,
+                            plural_check,
+                            film_info.directors,
+                            film_info.countries,
+                            country_check,
+                            film_info.genre,
+                            duration,
+                            film_info.info["people"],
+                            film_info.info["likes"],
+                            film_info.info.get("reviews").unwrap_or(&"0".to_string())
+                        )
+                    )
                     .url(film_info.url)
                     .color(color)
                     .thumbnail(film_info.poster)
@@ -283,10 +315,16 @@ pub async fn roulette(ctx: Context<'_>) -> Result<(), Error> {
     ctx.defer().await?;
     let wait = ctx.say("Please wait...").await?;
     let handle = Handle::current();
-    let film_info = spawn_blocking(move || lbxd_util::get_roulette().unwrap())
-        .await
-        .unwrap();
+    let film_info = spawn_blocking(move || {
+        lbxd_util::get_roulette().unwrap_or_else(|_| {
+            lbxd_util::get_roulette().unwrap_or_else(|_| lbxd_util::get_roulette().unwrap())
+        })
+    })
+    .await
+    .unwrap();
     drop(handle);
+    wait.edit(ctx, |m| m.content("Fetching information..."))
+        .await?;
     let color = ctx
         .author_member()
         .await
@@ -298,15 +336,48 @@ pub async fn roulette(ctx: Context<'_>) -> Result<(), Error> {
     } else {
         String::new()
     };
+    let rating = if film_info.rating != " 0.0".to_string() {
+        format!("{}\n", film_info.rating)
+    } else {
+        "".to_string()
+    };
+    let plural_check = vec!["", "s"][(film_info.directors.split(", ").count() > 1) as usize];
+    let country_check = if !film_info.countries.is_empty() {
+        "|"
+    } else {
+        ""
+    };
+    let duration = if film_info.duration != "0m".to_string() {
+        format!("{}\n", film_info.duration)
+    } else {
+        "".to_string()
+    };
     wait.edit(ctx, |m| {
-            m.embed(|e| {
+            m.content("")
+            .embed(|e| {
                 e.title(film_info.title)
-                    .description(format!("{}{}\n\n{}\nDirector{}: {}\n{} | {}\n{}\n\u{1f440} {} | \u{02764} {} | \u{1f4ac} {}", tagline, film_info.synopsis, film_info.rating, vec!["", "s"][(film_info.directors.split(", ").count() > 1) as usize], film_info.directors, film_info.countries, film_info.genre, film_info.duration, film_info.info["people"], film_info.info["likes"], film_info.info["reviews"]))
-                    .url(film_info.url)
-                    .color(color)
-                    .thumbnail(film_info.poster)
-                }).content("")
-        })
-        .await?;
+                .description(
+                    format!(
+                        "{}{}\n\n{}Director{}: {}\n{} {} {}\n{}\u{1f440} {} | ❤️ {} | \u{1f4ac} {}",
+                        tagline,
+                        film_info.synopsis,
+                        rating,
+                        plural_check,
+                        film_info.directors,
+                        film_info.countries,
+                        country_check,
+                        film_info.genre,
+                        duration,
+                        film_info.info["people"],
+                        film_info.info["likes"],
+                        film_info.info.get("reviews").unwrap_or(&"0".to_string())
+                    )
+                )
+                .url(film_info.url)
+                .color(color)
+                .thumbnail(film_info.poster)
+            })
+    })
+    .await?;
     Ok(())
 }

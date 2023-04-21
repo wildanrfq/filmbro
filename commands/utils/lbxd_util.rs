@@ -197,18 +197,15 @@ pub fn get_diary(
 
 pub fn get_film(title: &str) -> Result<FilmResult, Box<dyn std::error::Error>> {
     const BASE_URL: &str = "https://letterboxd.com";
-    let search_film =
-        reqwest::blocking::get(BASE_URL.to_string() + "/search/films/" + title)?.text()?;
-    if search_film.contains("There were no matches for your search term.") {
-        return Ok(FilmResult {
-            found: false,
-            ..Default::default()
-        });
-    }
+    let title_regex = Regex::new(r#"([^[:ascii:][:alnum:]'\s]|^)([[:ascii:][:alnum:]'\s\u{4e00}-\u{9fff}]*)([^[:ascii:][:alnum:]'\s]|$)"#).unwrap();
+    let new_title = title_regex
+        .replace_all(&title.to_lowercase(), "$2")
+        .to_string();
+    let search_film = reqwest::blocking::get(BASE_URL.to_string() + "/search/films/" + &new_title + "/?adult")?;
     let sf_ul = selector("ul.results");
     let sf_li = selector("li");
     let sf_div = selector("div");
-    let sf_html = Html::parse_document(&search_film);
+    let sf_html = Html::parse_document(&search_film.text()?);
     let sf_ul2 = sf_html.select(&sf_ul).next().unwrap();
     let film_url = sf_ul2
         .select(&sf_li)
@@ -252,12 +249,16 @@ pub fn get_film(title: &str) -> Result<FilmResult, Box<dyn std::error::Error>> {
         "".to_string()
     };
     let poster_pattern = Regex::new(r#""image":"([^\s"']+)"#).unwrap();
-    let poster = poster_pattern
-        .captures(&film)
-        .unwrap()
-        .get(1)
-        .unwrap()
-        .as_str();
+    let poster = if poster_pattern.captures(&film).is_some() {
+        poster_pattern
+            .captures(&film)
+            .unwrap()
+            .get(1)
+            .unwrap()
+            .as_str()
+    } else {
+        ""
+    };
     let rating_selector = selector(r#"meta[name="twitter:data2"]"#);
     let rating_point: f32 = if html_film.select(&rating_selector).next().is_some() {
         html_film
@@ -292,22 +293,26 @@ pub fn get_film(title: &str) -> Result<FilmResult, Box<dyn std::error::Error>> {
         .unwrap()
         .to_string();
     let countries_pattern = Regex::new(r#"/films/country/.*/" class=".*">(.*)</a>"#).unwrap();
-    let countries = countries_pattern
-        .captures(&film)
-        .unwrap()
-        .get(0)
-        .map(|m| m.as_str())
-        .unwrap_or_default()
-        .split(r#"text-slug">"#)
-        .filter_map(|c| {
-            if c.contains("</a>") {
-                Some(c.split("</a>").next().unwrap_or_default().to_string())
-            } else {
-                None
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(", ");
+    let countries_raw = countries_pattern.captures(&film);
+    let countries = if countries_raw.is_some() {
+        countries_raw
+            .unwrap()
+            .get(0)
+            .map(|m| m.as_str())
+            .unwrap_or_default()
+            .split(r#"text-slug">"#)
+            .filter_map(|c| {
+                if c.contains("</a>") {
+                    Some(c.split("</a>").next().unwrap_or_default().to_string())
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(", ")
+    } else {
+        "".to_string()
+    };
     let duration_selector = selector(r#"p[class="text-link text-footer"]"#);
     let duration_regex = Regex::new(r#"(\d+)&nbsp;mins &nbsp;"#).unwrap();
     let duration_raw = html_film
@@ -315,22 +320,26 @@ pub fn get_film(title: &str) -> Result<FilmResult, Box<dyn std::error::Error>> {
         .next()
         .unwrap()
         .inner_html();
-    let duration_str = duration_regex
-        .captures(&duration_raw)
-        .unwrap()
-        .get(1)
-        .unwrap()
-        .as_str();
+    let duration_str_raw = duration_regex.captures(&duration_raw);
+    let duration_str = if duration_str_raw.is_some() {
+        duration_str_raw.unwrap().get(1).unwrap().as_str()
+    } else {
+        "0"
+    };
     let duration = convert_duration(duration_str.parse::<u32>().unwrap());
     let genre_regex = Regex::new(r#""genre":[\[](.*)"[\]]"#).unwrap();
-    let genre = genre_regex
-        .captures(&film)
-        .unwrap()
-        .get(1)
-        .unwrap()
-        .as_str()
-        .replace(r#"""#, "")
-        .replace(",", ", ");
+    let genre_raw = genre_regex.captures(&film);
+    let genre = if genre_raw.is_some() {
+        genre_raw
+            .unwrap()
+            .get(1)
+            .unwrap()
+            .as_str()
+            .replace(r#"""#, "")
+            .replace(",", ", ")
+    } else {
+        "".to_string()
+    };
     let info_regex = Regex::new(r#"title="(.*)&nbsp;(people|likes|reviews)"#).unwrap();
     let mut info: HashMap<String, String> = HashMap::new();
     for i in info_regex.captures_iter(&info_film) {
@@ -525,13 +534,13 @@ pub fn get_roulette() -> Result<FilmResult, Box<dyn std::error::Error>> {
             url = generate_lbxd_link()
         }
         let cc = c.clone();
-        dbg!(cc, &url[url.len() - 4..]);
+        dbg!(&url[url.len() - 4..]);
         if let Ok(res) = reqwest::blocking::get(c) {
             hd = res.headers().clone();
             if ["Film", "LogEntry"].contains(
                 &hd.get("x-letterboxd-type")
                     .map(|h| h.to_string())
-                    .unwrap_or_else(|| "no".to_string())
+                    .unwrap_or_else(|| "X".to_string())
                     .as_str(),
             ) {
                 break res;
@@ -543,18 +552,18 @@ pub fn get_roulette() -> Result<FilmResult, Box<dyn std::error::Error>> {
     let res_html = Html::parse_document(&res.text()?.clone());
     let header = hd.get("x-letterboxd-type").unwrap().to_str().unwrap();
     let title = if header == "Film" {
-        let display_name_selector = selector(r#"meta[property="og:title"]"#);
+        let title_selector = selector(r#"meta[property="og:title"]"#);
         res_html
-            .select(&display_name_selector)
+            .select(&title_selector)
             .next()
             .unwrap()
             .value()
             .attr("content")
             .unwrap()
     } else {
-        let display_name_selector = selector(r#"meta[property="og:title"]"#);
+        let title_selector = selector(r#"meta[property="og:title"]"#);
         let rating = res_html
-            .select(&display_name_selector)
+            .select(&title_selector)
             .next()
             .unwrap()
             .value()
