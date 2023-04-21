@@ -5,7 +5,7 @@ use crate::commands::utils::structs::*;
 use html_escape::decode_html_entities as decode_html;
 use rand::Rng;
 use regex::Regex;
-use reqwest::header::HeaderValue;
+use reqwest::{blocking::get as reqget, header::HeaderValue};
 use scraper::{Html, Selector};
 
 use std::collections::HashMap;
@@ -62,7 +62,7 @@ fn convert_duration(minutes: u32) -> String {
 }
 
 fn format_bio(text: &str) -> String {
-    let hyperlink_regex = Regex::new(r#"<a.*href="(?P<link>.*?)".*>(?P<title>.*?)</a>"#).unwrap();
+    let hyperlink_regex = build_regex(r#"<a.*href="(?P<link>.*?)".*>(?P<title>.*?)</a>"#);
     decode_html(
         hyperlink_regex
             .replace_all(text, "[$title]($link)")
@@ -79,12 +79,14 @@ fn format_bio(text: &str) -> String {
     .to_string()
 }
 
+fn build_regex(pat: &str) -> Regex {
+    Regex::new(pat).unwrap()
+}
 pub fn get_diary(
     username: String,
 ) -> Result<(String, String, Vec<DiaryResult>), Box<dyn std::error::Error>> {
     const BASE_URL: &str = "https://letterboxd.com";
-    let search_diary =
-        reqwest::blocking::get(format!("{}/{}/films/diary", BASE_URL, username))?.text()?;
+    let search_diary = reqget(format!("{}/{}/films/diary", BASE_URL, username))?.text()?;
 
     if search_diary.contains("Sorry, we can’t find the page you’ve requested.") {
         return Ok((
@@ -197,11 +199,13 @@ pub fn get_diary(
 
 pub fn get_film(title: &str) -> Result<FilmResult, Box<dyn std::error::Error>> {
     const BASE_URL: &str = "https://letterboxd.com";
-    let title_regex = Regex::new(r#"([^[:ascii:][:alnum:]'\s]|^)([[:ascii:][:alnum:]'\s\u{4e00}-\u{9fff}]*)([^[:ascii:][:alnum:]'\s]|$)"#).unwrap();
+    let title_regex = build_regex(
+        r#"([^[:ascii:][:alnum:]'\s]|^)([[:ascii:][:alnum:]'\s\u{4e00}-\u{9fff}]*)([^[:ascii:][:alnum:]'\s]|$)"#,
+    );
     let new_title = title_regex
         .replace_all(&title.to_lowercase(), "$2")
         .to_string();
-    let search_film = reqwest::blocking::get(BASE_URL.to_string() + "/search/films/" + &new_title + "/?adult")?;
+    let search_film = reqget(BASE_URL.to_string() + "/search/films/" + &new_title + "/?adult")?;
     let sf_ul = selector("ul.results");
     let sf_li = selector("li");
     let sf_div = selector("div");
@@ -217,8 +221,8 @@ pub fn get_film(title: &str) -> Result<FilmResult, Box<dyn std::error::Error>> {
         .value()
         .attr("data-target-link")
         .unwrap();
-    let film = reqwest::blocking::get(BASE_URL.to_string() + film_url)?.text()?;
-    let info_film = reqwest::blocking::get(BASE_URL.to_string() + film_url + "/reviews")?.text()?;
+    let film = reqget(BASE_URL.to_string() + film_url)?.text()?;
+    let info_film = reqget(BASE_URL.to_string() + film_url + "/reviews")?.text()?;
     let html_film = Html::parse_document(&film);
     let title_selector = selector(r#"meta[property="og:title"]"#);
     let title = html_film
@@ -248,7 +252,7 @@ pub fn get_film(title: &str) -> Result<FilmResult, Box<dyn std::error::Error>> {
     } else {
         "".to_string()
     };
-    let poster_pattern = Regex::new(r#""image":"([^\s"']+)"#).unwrap();
+    let poster_pattern = build_regex(r#""image":"([^\s"']+)"#);
     let poster = if poster_pattern.captures(&film).is_some() {
         poster_pattern
             .captures(&film)
@@ -292,7 +296,7 @@ pub fn get_film(title: &str) -> Result<FilmResult, Box<dyn std::error::Error>> {
         .attr("content")
         .unwrap()
         .to_string();
-    let countries_pattern = Regex::new(r#"/films/country/.*/" class=".*">(.*)</a>"#).unwrap();
+    let countries_pattern = build_regex(r#"/films/country/.*/" class=".*">(.*)</a>"#);
     let countries_raw = countries_pattern.captures(&film);
     let countries = if countries_raw.is_some() {
         countries_raw
@@ -314,7 +318,7 @@ pub fn get_film(title: &str) -> Result<FilmResult, Box<dyn std::error::Error>> {
         "".to_string()
     };
     let duration_selector = selector(r#"p[class="text-link text-footer"]"#);
-    let duration_regex = Regex::new(r#"(\d+)&nbsp;mins &nbsp;"#).unwrap();
+    let duration_regex = build_regex(r#"(\d+)&nbsp;mins &nbsp;"#);
     let duration_raw = html_film
         .select(&duration_selector)
         .next()
@@ -327,7 +331,7 @@ pub fn get_film(title: &str) -> Result<FilmResult, Box<dyn std::error::Error>> {
         "0"
     };
     let duration = convert_duration(duration_str.parse::<u32>().unwrap());
-    let genre_regex = Regex::new(r#""genre":[\[](.*)"[\]]"#).unwrap();
+    let genre_regex = build_regex(r#""genre":[\[](.*)"[\]]"#);
     let genre_raw = genre_regex.captures(&film);
     let genre = if genre_raw.is_some() {
         genre_raw
@@ -340,7 +344,7 @@ pub fn get_film(title: &str) -> Result<FilmResult, Box<dyn std::error::Error>> {
     } else {
         "".to_string()
     };
-    let info_regex = Regex::new(r#"title="(.*)&nbsp;(people|likes|reviews)"#).unwrap();
+    let info_regex = build_regex(r#"title="(.*)&nbsp;(people|likes|reviews)"#);
     let mut info: HashMap<String, String> = HashMap::new();
     for i in info_regex.captures_iter(&info_film) {
         info.insert(i[2].to_string(), format_number(&i[1]));
@@ -365,7 +369,7 @@ pub fn get_film(title: &str) -> Result<FilmResult, Box<dyn std::error::Error>> {
 pub fn get_profile(username: &str) -> Result<ProfileResult, Box<dyn std::error::Error>> {
     const BASE_URL: &str = "https://letterboxd.com";
     let profile_url = format!("{}/{}", BASE_URL, username);
-    let search_profile = reqwest::blocking::get(&profile_url)?.text()?;
+    let search_profile = reqget(&profile_url)?.text()?;
 
     if search_profile.contains("Sorry, we can’t find the page you’ve requested.") {
         return Ok(ProfileResult {
@@ -535,7 +539,7 @@ pub fn get_roulette() -> Result<FilmResult, Box<dyn std::error::Error>> {
         }
         let cc = c.clone();
         dbg!(&url[url.len() - 4..]);
-        if let Ok(res) = reqwest::blocking::get(c) {
+        if let Ok(res) = reqget(c) {
             hd = res.headers().clone();
             if ["Film", "LogEntry"].contains(
                 &hd.get("x-letterboxd-type")
