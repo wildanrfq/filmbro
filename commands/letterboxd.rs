@@ -1,9 +1,11 @@
 use crate::commands::utils::{lbxd_util, structs};
+
 use poise::serenity_prelude as serenity;
 use serenity::{
     model::{id::EmojiId, misc::EmojiIdentifier},
     ReactionType::Unicode,
 };
+use tokio::{runtime::Handle, task::spawn_blocking};
 
 type Context<'a> = poise::Context<'a, structs::Data, Error>;
 type Error = Box<dyn std::error::Error + Send + Sync>;
@@ -16,7 +18,7 @@ async fn sleep(secs: u64) {
 #[poise::command(
     slash_command,
     rename = "letterboxd",
-    subcommands("diary", "film", "profile")
+    subcommands("diary", "film", "profile", "roulette")
 )]
 pub async fn base(_ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
@@ -40,11 +42,10 @@ pub async fn diary(
         cache.read().unwrap().get(&username).cloned().unwrap()
     } else {
         let username_clone = username.clone();
-        let handle = tokio::runtime::Handle::current();
-        let diaries =
-            tokio::task::spawn_blocking(move || lbxd_util::get_diary(username_clone).unwrap())
-                .await
-                .unwrap();
+        let handle = Handle::current();
+        let diaries = spawn_blocking(move || lbxd_util::get_diary(username_clone).unwrap())
+            .await
+            .unwrap();
         drop(handle);
         ctx.data()
             .diary_cache
@@ -131,11 +132,10 @@ pub async fn film(
         cache.read().unwrap().get(&title).cloned().unwrap()
     } else {
         let title_clone = title.clone();
-        let handle = tokio::runtime::Handle::current();
-        let film_info =
-            tokio::task::spawn_blocking(move || lbxd_util::get_film(&title_clone).unwrap())
-                .await
-                .unwrap();
+        let handle = Handle::current();
+        let film_info = spawn_blocking(move || lbxd_util::get_film(&title_clone).unwrap())
+            .await
+            .unwrap();
         drop(handle);
         ctx.data()
             .film_cache
@@ -192,12 +192,10 @@ pub async fn profile(
         cache.read().unwrap().get(&username).cloned().unwrap()
     } else {
         let username_clone = username.clone();
-        let handle = tokio::runtime::Handle::current();
-        let user = tokio::task::spawn_blocking(move || {
-            lbxd_util::get_profile(&username_clone).unwrap()
-        })
-        .await
-        .unwrap();
+        let handle = Handle::current();
+        let user = spawn_blocking(move || lbxd_util::get_profile(&username_clone).unwrap())
+            .await
+            .unwrap();
         drop(handle);
         ctx.data()
             .profile_cache
@@ -276,5 +274,39 @@ pub async fn profile(
         sleep(5).await;
         error_message.delete(ctx).await?;
     }
+    Ok(())
+}
+
+/// A roulette to get a random film off Letterboxd.
+#[poise::command(slash_command)]
+pub async fn roulette(ctx: Context<'_>) -> Result<(), Error> {
+    ctx.defer().await?;
+    let wait = ctx.say("Please wait...").await?;
+    let handle = Handle::current();
+    let film_info = spawn_blocking(move || lbxd_util::get_roulette().unwrap())
+        .await
+        .unwrap();
+    drop(handle);
+    let color = ctx
+        .author_member()
+        .await
+        .unwrap()
+        .colour(&ctx.serenity_context().cache)
+        .unwrap();
+    let tagline = if !film_info.tagline.is_empty() {
+        format!("**{}**\n", film_info.tagline)
+    } else {
+        String::new()
+    };
+    wait.edit(ctx, |m| {
+            m.embed(|e| {
+                e.title(film_info.title)
+                    .description(format!("{}{}\n\n{}\nDirector{}: {}\n{} | {}\n{}\n\u{1f440} {} | \u{02764} {} | \u{1f4ac} {}", tagline, film_info.synopsis, film_info.rating, vec!["", "s"][(film_info.directors.split(", ").count() > 1) as usize], film_info.directors, film_info.countries, film_info.genre, film_info.duration, film_info.info["people"], film_info.info["likes"], film_info.info["reviews"]))
+                    .url(film_info.url)
+                    .color(color)
+                    .thumbnail(film_info.poster)
+                }).content("")
+        })
+        .await?;
     Ok(())
 }

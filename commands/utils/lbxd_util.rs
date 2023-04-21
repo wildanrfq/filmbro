@@ -1,10 +1,24 @@
 #![allow(unused_variables, dead_code)]
 
 use crate::commands::utils::structs::*;
+
 use html_escape::decode_html_entities as decode_html;
+use rand::Rng;
 use regex::Regex;
+use reqwest::header::HeaderValue;
 use scraper::{Html, Selector};
+
 use std::collections::HashMap;
+
+pub trait HeaderValueExt {
+    fn to_string(&self) -> String;
+}
+
+impl HeaderValueExt for HeaderValue {
+    fn to_string(&self) -> String {
+        self.to_str().unwrap_or_default().to_string()
+    }
+}
 
 fn format_number(n: &str) -> String {
     let number = n.replace(",", "").parse::<f64>().unwrap();
@@ -218,18 +232,17 @@ pub fn get_film(title: &str) -> Result<FilmResult, Box<dyn std::error::Error>> {
         .attr("content")
         .unwrap();
     let syn_selector = selector(r#"meta[name="description"]"#);
-    let mut synopsis = html_film
-        .select(&syn_selector)
-        .next()
-        .unwrap()
-        .value()
-        .attr("content")
-        .unwrap()
-        .to_string();
-    synopsis = if synopsis.len() > 100 {
-        format!("{}...", &synopsis[..100]).to_string()
+    let synopsis_raw: String;
+    let syn = html_film.select(&syn_selector).next();
+    synopsis_raw = if syn.is_some() {
+        syn.unwrap().value().attr("content").unwrap().to_string()
     } else {
-        synopsis.to_string()
+        String::new()
+    };
+    let synopsis = if synopsis_raw.len() > 100 {
+        format!("{}...", &synopsis_raw[..100]).to_string()
+    } else {
+        synopsis_raw.to_string()
     };
     let tag_selector = selector("h4.tagline");
     let tagline_check = html_film.select(&tag_selector).next();
@@ -246,18 +259,23 @@ pub fn get_film(title: &str) -> Result<FilmResult, Box<dyn std::error::Error>> {
         .unwrap()
         .as_str();
     let rating_selector = selector(r#"meta[name="twitter:data2"]"#);
-    let rating_point: f32 = html_film
-        .select(&rating_selector)
-        .next()
-        .unwrap()
-        .value()
-        .attr("content")
-        .unwrap()
-        .split(" out")
-        .next()
-        .unwrap()
-        .parse()
-        .unwrap();
+    let rating_point: f32 = if html_film.select(&rating_selector).next().is_some() {
+        html_film
+            .select(&rating_selector)
+            .next()
+            .unwrap()
+            .value()
+            .attr("content")
+            .unwrap()
+            .split(" out")
+            .next()
+            .unwrap()
+            .parse()
+            .unwrap()
+    } else {
+        0.0
+    };
+
     let rating = format!(
         "{} {}{}",
         starrize(rating_point),
@@ -483,4 +501,70 @@ pub fn get_profile(username: &str) -> Result<ProfileResult, Box<dyn std::error::
         websites: websites,
         url: profile_url,
     })
+}
+
+fn generate_lbxd_link() -> String {
+    let mut rng = rand::thread_rng();
+    let x: Vec<char> = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        .chars()
+        .collect();
+    format!(
+        "https://boxd.it/{}",
+        (0..6)
+            .map(|_| x[rng.gen_range(0..x.len())])
+            .collect::<String>()
+    )
+}
+
+pub fn get_roulette() -> Result<FilmResult, Box<dyn std::error::Error>> {
+    let mut url = generate_lbxd_link();
+    let mut hd;
+    let res = loop {
+        let c = url.clone();
+        if url[url.len() - 4..].contains("/") {
+            url = generate_lbxd_link()
+        }
+        let cc = c.clone();
+        dbg!(cc, &url[url.len() - 4..]);
+        if let Ok(res) = reqwest::blocking::get(c) {
+            hd = res.headers().clone();
+            if ["Film", "LogEntry"].contains(
+                &hd.get("x-letterboxd-type")
+                    .map(|h| h.to_string())
+                    .unwrap_or_else(|| "no".to_string())
+                    .as_str(),
+            ) {
+                break res;
+            } else {
+                url.pop();
+            }
+        }
+    };
+    let res_html = Html::parse_document(&res.text()?.clone());
+    let header = hd.get("x-letterboxd-type").unwrap().to_str().unwrap();
+    let title = if header == "Film" {
+        let display_name_selector = selector(r#"meta[property="og:title"]"#);
+        res_html
+            .select(&display_name_selector)
+            .next()
+            .unwrap()
+            .value()
+            .attr("content")
+            .unwrap()
+    } else {
+        let display_name_selector = selector(r#"meta[property="og:title"]"#);
+        let rating = res_html
+            .select(&display_name_selector)
+            .next()
+            .unwrap()
+            .value()
+            .attr("content")
+            .unwrap();
+        if rating.contains("entry for") {
+            rating.split("entry for ").collect::<Vec<_>>()[1]
+        } else {
+            rating.split("review of ").collect::<Vec<_>>()[1]
+        }
+    };
+    get_film(&title)
 }
