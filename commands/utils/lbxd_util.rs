@@ -5,20 +5,9 @@ use crate::commands::utils::structs::*;
 use html_escape::decode_html_entities as decode_html;
 use rand::Rng;
 use regex::Regex;
-use reqwest::header::HeaderValue;
 use scraper::{Html, Selector};
 
 use std::collections::HashMap;
-
-pub trait HeaderValueExt {
-    fn to_string(&self) -> String;
-}
-
-impl HeaderValueExt for HeaderValue {
-    fn to_string(&self) -> String {
-        self.to_str().unwrap_or_default().to_string()
-    }
-}
 
 fn format_number(n: &str) -> String {
     let number = n.replace(",", "").parse::<f64>().unwrap();
@@ -528,12 +517,9 @@ pub fn get_roulette() -> Result<FilmResult, Box<dyn std::error::Error>> {
         dbg!(cc, &url[url.len() - 4..]);
         if let Ok(res) = reqwest::blocking::get(c) {
             hd = res.headers().clone();
-            if ["Film", "LogEntry"].contains(
-                &hd.get("x-letterboxd-type")
-                    .map(|h| h.to_string())
-                    .unwrap_or_else(|| "no".to_string())
-                    .as_str(),
-            ) {
+            if ["Film", "LogEntry"]
+                .contains(&hd.get("x-letterboxd-type").unwrap().to_str().unwrap())
+            {
                 break res;
             } else {
                 url.pop();
