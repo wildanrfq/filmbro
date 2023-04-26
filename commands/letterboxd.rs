@@ -101,21 +101,19 @@ pub async fn diary(
             })
         })
         .await?;
+    } else if diaries.2[0].title.is_empty() {
+        let error_message = ctx.say(format!(
+            "Couldn't find `{}` user.\nMake sure to provide your Letterboxd **username**, not the link.",
+            username
+        )).await?;
+        sleep(5).await;
+        error_message.delete(ctx).await?;
     } else {
-        if diaries.2[0].title.is_empty() {
-            let error_message = ctx.say(format!(
-                "Couldn't find `{}` user.\nMake sure to provide your Letterboxd **username**, not the link.",
-                username
-            )).await?;
-            sleep(5).await;
-            error_message.delete(ctx).await?;
-        } else {
-            let error_message = ctx
-                .say(format!("`{}` doesn't have any recent diaries.", username))
-                .await?;
-            sleep(5).await;
-            error_message.delete(ctx).await?;
-        }
+        let error_message = ctx
+            .say(format!("`{}` doesn't have any recent diaries.", username))
+            .await?;
+        sleep(5).await;
+        error_message.delete(ctx).await?;
     }
     Ok(())
 }
@@ -162,7 +160,7 @@ pub async fn film(
         } else {
             String::new()
         };
-        let rating = if film_info.rating != " 0.0".to_string() {
+        let rating = if film_info.rating != *" 0.0" {
             format!("{}\n", film_info.rating)
         } else {
             "".to_string()
@@ -173,35 +171,33 @@ pub async fn film(
         } else {
             ""
         };
-        let duration = if film_info.duration != "0m".to_string() {
+        let duration = if film_info.duration != *"0m" {
             format!("{}\n", film_info.duration)
         } else {
             "".to_string()
         };
         ctx.send(|m| {
-                m.embed(|e| {
-                    e.title(film_info.title)
-                    .description(
-                        format!(
-                            "{}{}\n\n{}Director{}: {}\n{} {} {}\n{}\u{1f440} {} | ❤️ {} | \u{1f4ac} {}",
-                            tagline,
-                            film_info.synopsis,
-                            rating,
-                            plural_check,
-                            film_info.directors,
-                            film_info.countries,
-                            country_check,
-                            film_info.genre,
-                            duration,
-                            film_info.info["people"],
-                            film_info.info["likes"],
-                            film_info.info.get("reviews").unwrap_or(&"0".to_string())
-                        )
-                    )
+            m.embed(|e| {
+                e.title(film_info.title)
+                    .description(format!(
+                        "{}{}\n\n{}Director{}: {}\n{} {} {}\n{}\u{1f440} {} | ❤️ {} | \u{1f4ac} {}",
+                        tagline,
+                        film_info.synopsis,
+                        rating,
+                        plural_check,
+                        film_info.directors,
+                        film_info.countries,
+                        country_check,
+                        film_info.genre,
+                        duration,
+                        film_info.info["people"],
+                        film_info.info["likes"],
+                        film_info.info.get("reviews").unwrap_or(&"0".to_string())
+                    ))
                     .url(film_info.url)
                     .color(color)
                     .thumbnail(film_info.poster)
-                })
+            })
         })
         .await?;
     } else {
@@ -260,7 +256,7 @@ pub async fn profile(
             .colour(&ctx.serenity_context().cache)
             .unwrap();
         ctx.send(|m| {
-                if user.websites.len() != 0 {
+                if !user.websites.is_empty() {
                     m.components(|c| {
                         c.create_action_row(|ar| {
                             if user.websites.len() == 1 {
@@ -296,7 +292,7 @@ pub async fn profile(
                     .description(description)
                     .color(color)
                     .url(user.url)
-                    .footer(|f| f.text(format!("{} follower{}, {}", user.followers, ["", "s"][(user.followers.replace(",", "").parse::<i32>().unwrap() > 1) as usize], user.films_count)))
+                    .footer(|f| f.text(format!("{} follower{}, {}", user.followers, ["", "s"][(user.followers.replace(',', "").parse::<i32>().unwrap() > 1) as usize], user.films_count)))
                 })}).await?;
     } else {
         let error_message = ctx.say(format!(
@@ -336,7 +332,7 @@ pub async fn roulette(ctx: Context<'_>) -> Result<(), Error> {
     } else {
         String::new()
     };
-    let rating = if film_info.rating != " 0.0".to_string() {
+    let rating = if film_info.rating != *" 0.0" {
         format!("{}\n", film_info.rating)
     } else {
         "".to_string()
@@ -347,36 +343,33 @@ pub async fn roulette(ctx: Context<'_>) -> Result<(), Error> {
     } else {
         ""
     };
-    let duration = if film_info.duration != "0m".to_string() {
+    let duration = if film_info.duration != *"0m" {
         format!("{}\n", film_info.duration)
     } else {
         "".to_string()
     };
     wait.edit(ctx, |m| {
-            m.content("")
-            .embed(|e| {
-                e.title(film_info.title)
-                .description(
-                    format!(
-                        "{}{}\n\n{}Director{}: {}\n{} {} {}\n{}\u{1f440} {} | ❤️ {} | \u{1f4ac} {}",
-                        tagline,
-                        film_info.synopsis,
-                        rating,
-                        plural_check,
-                        film_info.directors,
-                        film_info.countries,
-                        country_check,
-                        film_info.genre,
-                        duration,
-                        film_info.info["people"],
-                        film_info.info["likes"],
-                        film_info.info.get("reviews").unwrap_or(&"0".to_string())
-                    )
-                )
+        m.content("").embed(|e| {
+            e.title(film_info.title)
+                .description(format!(
+                    "{}{}\n\n{}Director{}: {}\n{} {} {}\n{}\u{1f440} {} | ❤️ {} | \u{1f4ac} {}",
+                    tagline,
+                    film_info.synopsis,
+                    rating,
+                    plural_check,
+                    film_info.directors,
+                    film_info.countries,
+                    country_check,
+                    film_info.genre,
+                    duration,
+                    film_info.info["people"],
+                    film_info.info["likes"],
+                    film_info.info.get("reviews").unwrap_or(&"0".to_string())
+                ))
                 .url(film_info.url)
                 .color(color)
                 .thumbnail(film_info.poster)
-            })
+        })
     })
     .await?;
     Ok(())

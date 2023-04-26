@@ -21,10 +21,10 @@ impl HeaderValueExt for HeaderValue {
 }
 
 fn format_number(n: &str) -> String {
-    let number = n.replace(",", "").parse::<f64>().unwrap();
+    let number = n.replace(',', "").parse::<f64>().unwrap();
     match number.abs() {
         n if n >= 1_000_000.0 => format!("{:.2}m", number / 1_000_000.0),
-        n if n >= 100_000.0 && n < 1_000_000.0 => format!("{:.1}k", number / 1_000.0),
+        n if (100_000.0..1_000_000.0).contains(&n) => format!("{:.1}k", number / 1_000.0),
         n if n >= 1_000.0 => format!("{:.1}k", number / 1_000.0),
         _ => format!("{:.0}", number),
     }
@@ -131,7 +131,7 @@ pub fn get_diary(
     let avatar = if avatar_raw.contains("static") {
         String::new()
     } else {
-        avatar_raw.replace("0-48-0-48", "0-220-0-220").to_string()
+        avatar_raw.replace("0-48-0-48", "0-220-0-220")
     };
     let display_name_selector = selector(r#"meta[property="og:title"]"#);
     let display_name = sd_html
@@ -163,14 +163,14 @@ pub fn get_diary(
         let date = if date_raw.contains("2023") {
             date_raw
                 .replace(" 2023", "")
-                .split(" ")
+                .split(' ')
                 .collect::<Vec<_>>()
                 .into_iter()
                 .rev()
                 .collect::<Vec<_>>()
                 .join(" ")
         } else {
-            let dates = date_raw.split(" ").collect::<Vec<_>>();
+            let dates = date_raw.split(' ').collect::<Vec<_>>();
             format!("{} {}, {}", dates[1], dates[0], dates[2])
         };
         let rating = starrize(data.attr("data-rating").unwrap().parse::<f32>().unwrap() / 2.0);
@@ -185,13 +185,13 @@ pub fn get_diary(
         let liked = entry.select(&liked_selector).next().is_some();
         diaries_vec.push(DiaryResult {
             found: true,
-            title: title,
-            rating: rating,
-            date: date,
-            rewatched: rewatched,
-            liked: liked,
-            reviewed: reviewed,
-            url: url,
+            title,
+            rating,
+            date,
+            rewatched,
+            liked,
+            reviewed,
+            url,
         });
     }
     Ok((avatar, display_name, diaries_vec))
@@ -233,17 +233,17 @@ pub fn get_film(title: &str) -> Result<FilmResult, Box<dyn std::error::Error>> {
         .attr("content")
         .unwrap();
     let syn_selector = selector(r#"meta[name="description"]"#);
-    let synopsis_raw: String;
+
     let syn = html_film.select(&syn_selector).next();
-    synopsis_raw = if syn.is_some() {
-        syn.unwrap().value().attr("content").unwrap().to_string()
+    let synopsis_raw: String = if let Some(syno) = syn {
+        syno.value().attr("content").unwrap().to_string()
     } else {
         String::new()
     };
     let synopsis = if synopsis_raw.len() > 100 {
-        format!("{}...", &synopsis_raw[..100]).to_string()
+        format!("{}...", &synopsis_raw[..100])
     } else {
-        synopsis_raw.to_string()
+        synopsis_raw
     };
     let tag_selector = selector("h4.tagline");
     let tagline_check = html_film.select(&tag_selector).next();
@@ -298,9 +298,8 @@ pub fn get_film(title: &str) -> Result<FilmResult, Box<dyn std::error::Error>> {
         .to_string();
     let countries_pattern = build_regex(r#"/films/country/.*/" class=".*">(.*)</a>"#);
     let countries_raw = countries_pattern.captures(&film);
-    let countries = if countries_raw.is_some() {
+    let countries = if let Some(countries_raw) = countries_raw {
         countries_raw
-            .unwrap()
             .get(0)
             .map(|m| m.as_str())
             .unwrap_or_default()
@@ -315,7 +314,7 @@ pub fn get_film(title: &str) -> Result<FilmResult, Box<dyn std::error::Error>> {
             .collect::<Vec<_>>()
             .join(", ")
     } else {
-        "".to_string()
+        String::new()
     };
     let duration_selector = selector(r#"p[class="text-link text-footer"]"#);
     let duration_regex = build_regex(r#"(\d+)&nbsp;mins &nbsp;"#);
@@ -325,24 +324,23 @@ pub fn get_film(title: &str) -> Result<FilmResult, Box<dyn std::error::Error>> {
         .unwrap()
         .inner_html();
     let duration_str_raw = duration_regex.captures(&duration_raw);
-    let duration_str = if duration_str_raw.is_some() {
-        duration_str_raw.unwrap().get(1).unwrap().as_str()
+    let duration_str = if let Some(duration_str_raw) = duration_str_raw {
+        duration_str_raw.get(1).unwrap().as_str()
     } else {
         "0"
     };
     let duration = convert_duration(duration_str.parse::<u32>().unwrap());
     let genre_regex = build_regex(r#""genre":[\[](.*)"[\]]"#);
     let genre_raw = genre_regex.captures(&film);
-    let genre = if genre_raw.is_some() {
+    let genre = if let Some(genre_raw) = genre_raw {
         genre_raw
-            .unwrap()
             .get(1)
             .unwrap()
             .as_str()
-            .replace(r#"""#, "")
-            .replace(",", ", ")
+            .replace('"', "")
+            .replace(',', ", ")
     } else {
-        "".to_string()
+        String::new()
     };
     let info_regex = build_regex(r#"title="(.*)&nbsp;(people|likes|reviews)"#);
     let mut info: HashMap<String, String> = HashMap::new();
@@ -352,14 +350,14 @@ pub fn get_film(title: &str) -> Result<FilmResult, Box<dyn std::error::Error>> {
     let result = FilmResult {
         found: true,
         title: title.to_string(),
-        tagline: tagline.to_string(),
-        synopsis: synopsis.to_string(),
-        rating: rating.to_string(),
-        duration: duration.to_string(),
-        directors: directors,
-        countries: countries,
-        genre: genre,
-        info: info,
+        tagline,
+        synopsis,
+        rating,
+        duration,
+        directors,
+        countries,
+        genre,
+        info,
         poster: poster.to_string(),
         url: BASE_URL.to_string() + film_url,
     };
@@ -406,7 +404,7 @@ pub fn get_profile(username: &str) -> Result<ProfileResult, Box<dyn std::error::
         .map(|elem| {
             format!(
                 "📍 ***{}***",
-                elem.text().collect::<Vec<_>>().join("").trim().to_string()
+                elem.text().collect::<Vec<_>>().join("").trim()
             )
         })
         .unwrap_or_else(String::new);
@@ -461,28 +459,27 @@ pub fn get_profile(username: &str) -> Result<ProfileResult, Box<dyn std::error::
     } else {
         avatar_raw.to_string()
     };
-    let bio_selector = selector(r#"section[id="person-bio"]"#);
+    let bio_selector = selector(r#"div[class="collapsed-text"]"#);
     let bio_raw = sp_html.select(&bio_selector).next();
-    let bio = if bio_raw.is_some() {
-        let div_bio_selector = selector(r#"div[class="collapsed-text"]"#);
-        let div_bio = bio_raw.unwrap().select(&div_bio_selector).next();
-        if div_bio.is_some() {
-            format_bio(&div_bio.unwrap().inner_html())
-        } else {
-            let medium_bio_selector = selector(r#"div[class="collapsible-text body-text -small"]"#);
-            let medium_bio = bio_raw.unwrap().select(&medium_bio_selector).next();
-            format_bio(&medium_bio.unwrap().inner_html())
-        }
-    } else {
-        let short_div_bio_selector =
-            Selector::parse(r#"div[class="collapsible-text body-text -small js-bio-content"]"#)
-                .unwrap();
-        let check_short_bio = sp_html.select(&short_div_bio_selector).next();
-        if check_short_bio.is_some() {
-            format_bio(&check_short_bio.unwrap().inner_html())
+    let medium_bio_selector = selector(r#"div[class="collapsible-text body-text -small"]"#);
+    let short_bio_selector =
+        Selector::parse(r#"div[class="collapsible-text body-text -small js-bio-content"]"#)
+            .unwrap();
+    let bio = if let Some(raw) = bio_raw {
+        if let Some(div_bio) = raw.select(&bio_selector).next() {
+            format_bio(&div_bio.inner_html())
+        } else if let Some(medium_bio) = bio_raw
+            .as_ref()
+            .and_then(|raw| raw.select(&medium_bio_selector).next())
+        {
+            format_bio(&medium_bio.inner_html())
+        } else if let Some(short_bio) = sp_html.select(&short_bio_selector).next() {
+            format_bio(&short_bio.inner_html())
         } else {
             String::new()
         }
+    } else {
+        String::new()
     };
     let data_selector = selector(r#"h4[class="profile-statistic statistic"]"#);
     let mut films = sp_html.select(&data_selector);
@@ -503,15 +500,15 @@ pub fn get_profile(username: &str) -> Result<ProfileResult, Box<dyn std::error::
     let followers = films.last().unwrap().text().collect::<Vec<_>>()[0].to_string();
     Ok(ProfileResult {
         found: true,
-        avatar: avatar,
-        bio: bio,
+        avatar,
+        bio,
         username: actual_username,
-        name: name,
-        followers: followers,
-        favorites: favorites,
-        location: location,
-        films_count: films_count,
-        websites: websites,
+        name,
+        followers,
+        favorites,
+        location,
+        films_count,
+        websites,
         url: profile_url,
     })
 }
@@ -534,7 +531,7 @@ pub fn get_roulette() -> Result<FilmResult, Box<dyn std::error::Error>> {
     let mut hd;
     let res = loop {
         let c = url.clone();
-        if url[url.len() - 4..].contains("/") {
+        if url[url.len() - 4..].contains('/') {
             url = generate_lbxd_link()
         }
         let cc = c.clone();
@@ -553,7 +550,7 @@ pub fn get_roulette() -> Result<FilmResult, Box<dyn std::error::Error>> {
             }
         }
     };
-    let res_html = Html::parse_document(&res.text()?.clone());
+    let res_html = Html::parse_document(&res.text()?);
     let header = hd.get("x-letterboxd-type").unwrap().to_str().unwrap();
     let title = if header == "Film" {
         let title_selector = selector(r#"meta[property="og:title"]"#);
@@ -579,5 +576,5 @@ pub fn get_roulette() -> Result<FilmResult, Box<dyn std::error::Error>> {
             rating.split("review of ").collect::<Vec<_>>()[1]
         }
     };
-    get_film(&title)
+    get_film(title)
 }

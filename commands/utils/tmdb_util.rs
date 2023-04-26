@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
-use poise::serenity_prelude::json;
 use crate::config;
+use poise::serenity_prelude::json;
 
 pub fn get_images(
     film: String,
@@ -46,7 +46,7 @@ pub fn get_images(
             })
             .collect::<Vec<_>>()
             .to_vec();
-        Ok((title.to_string(), posters.to_vec()))
+        Ok((title, posters.to_vec()))
     } else {
         Ok((String::new(), vec![]))
     }

@@ -1,5 +1,6 @@
 use std::{collections::HashMap, sync::RwLock};
 
+type DiaryCache = RwLock<HashMap<String, (String, String, Vec<DiaryResult>)>>;
 #[derive(Clone, Debug, Default)]
 pub struct DiaryResult {
     pub found: bool,
@@ -45,7 +46,7 @@ pub struct ProfileResult {
 
 #[derive(Debug, Default)]
 pub struct Data {
-    pub diary_cache: RwLock<HashMap<String, (String, String, Vec<DiaryResult>)>>,
+    pub diary_cache: DiaryCache,
     pub film_cache: RwLock<HashMap<String, FilmResult>>,
     pub poster_cache: RwLock<HashMap<String, (String, Vec<String>)>>,
     pub backdrop_cache: RwLock<HashMap<String, (String, Vec<String>)>>,

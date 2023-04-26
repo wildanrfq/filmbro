@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use crate::commands::utils::{tmdb_util, paginator, structs};
+use crate::commands::utils::{paginator, structs, tmdb_util};
 //use poise::serenity_prelude as serenity;
 
 type Context<'a> = poise::Context<'a, structs::Data, Error>;
